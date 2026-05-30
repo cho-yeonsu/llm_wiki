@@ -1,0 +1,203 @@
+{
+  "main": {
+    "id": "e994c248c0de6b34",
+    "type": "split",
+    "children": [
+      {
+        "id": "619f30ddf5670fd9",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "0cb1de11aabb1244",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "새 탭"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "93eb7de2eb28d245",
+    "type": "split",
+    "children": [
+      {
+        "id": "79188057af29b7ac",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "fbc5654915f0718d",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "파일 탐색기"
+            }
+          },
+          {
+            "id": "ff8bf60109fa0a4d",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "검색"
+            }
+          },
+          {
+            "id": "2d38de87dfad7bb7",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "북마크"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "5395fe7018d4322f",
+    "type": "split",
+    "children": [
+      {
+        "id": "f585e2622242a789",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5e1c22f9095a4519",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "백링크"
+            }
+          },
+          {
+            "id": "e41b245c27250c92",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "나가는 링크"
+            }
+          },
+          {
+            "id": "8aa46f4d50856f3b",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "태그"
+            }
+          },
+          {
+            "id": "1d305fb4dfc489e8",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "모든 속성"
+            }
+          },
+          {
+            "id": "14b23f8cf98fdc83",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "wiki/companies/대한항공.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "대한항공 의 개요"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:빠른 전환기 열기": false,
+      "graph:그래프 뷰 열기": false,
+      "canvas:새 캔버스 만들기": false,
+      "daily-notes:오늘의 일일 노트 열기": false,
+      "templates:템플릿 삽입": false,
+      "command-palette:명령어 팔레트 열기": false,
+      "bases:새 베이스 생성하기": false,
+      "obsidian-git:Open Git source control": false
+    }
+  },
+  "active": "fbc5654915f0718d",
+  "lastOpenFiles": [
+    "sources/투자/articles/20260530_0619_차이나_인바운드_붐.md",
+    "wiki/투자/macro/위안화.md",
+    "wiki/투자/concepts/차이나인바운드.md",
+    "wiki/투자/concepts/한일령.md",
+    "wiki/투자/sectors/여행.md",
+    "wiki/투자/sectors/항공.md",
+    "wiki/투자/companies/대한항공.md",
+    "sources/부업/알프랩",
+    "sources/부업",
+    "sources/투자/notes",
+    "sources/투자/earnings",
+    "sources/투자/articles",
+    "sources/투자",
+    "wiki/부업/알프랩/제품개발",
+    "wiki/부업/알프랩/유통커머스",
+    "wiki/부업/알프랩/시장트렌드",
+    "wiki/부업/알프랩/브랜드전략",
+    "sources/articles/20260530_0619_차이나_인바운드_붐.md",
+    "schema/SCHEMA.md"
+  ]
+}
