@@ -20,7 +20,10 @@
       "mcp__80703b61-3805-4dbf-8ed5-059b66fa2117__notion-fetch",
       "WebSearch",
       "WebFetch(domain:blog.notifly.tech)",
-      "WebFetch(domain:www.tosspayments.com)"
+      "WebFetch(domain:www.tosspayments.com)",
+      "WebFetch(domain:inertialounge.com)",
+      "WebFetch(domain:alphabiz.co.kr)",
+      "WebFetch(domain:www.yakup.com)"
     ]
   }
 }
