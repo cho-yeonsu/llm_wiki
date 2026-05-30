@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:news.hada.io)",
+      "WebFetch(domain:www.mindstudio.ai)",
+      "WebFetch(domain:medium.com)",
+      "Bash(gh auth *)",
+      "Bash(git --version)"
+    ]
+  }
+}
