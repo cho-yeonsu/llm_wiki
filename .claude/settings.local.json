@@ -23,7 +23,8 @@
       "WebFetch(domain:www.tosspayments.com)",
       "WebFetch(domain:inertialounge.com)",
       "WebFetch(domain:alphabiz.co.kr)",
-      "WebFetch(domain:www.yakup.com)"
+      "WebFetch(domain:www.yakup.com)",
+      "WebFetch(domain:theqoo.net)"
     ]
   }
 }
