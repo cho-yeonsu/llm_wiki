@@ -6,7 +6,9 @@
       "WebFetch(domain:www.mindstudio.ai)",
       "WebFetch(domain:medium.com)",
       "Bash(gh auth *)",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(gh repo *)",
+      "Bash(git push *)"
     ]
   }
 }
