@@ -17,7 +17,10 @@
       "Bash([ -d \"sources/$dir\" ])",
       "Bash(cp -r sources/__TRACKED_VAR__/. sources/투자/__TRACKED_VAR__/)",
       "mcp__80703b61-3805-4dbf-8ed5-059b66fa2117__notion-search",
-      "mcp__80703b61-3805-4dbf-8ed5-059b66fa2117__notion-fetch"
+      "mcp__80703b61-3805-4dbf-8ed5-059b66fa2117__notion-fetch",
+      "WebSearch",
+      "WebFetch(domain:blog.notifly.tech)",
+      "WebFetch(domain:www.tosspayments.com)"
     ]
   }
 }

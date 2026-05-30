@@ -11,10 +11,14 @@
             "id": "0cb1de11aabb1244",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "그래프 뷰"
+              "type": "markdown",
+              "state": {
+                "file": "wiki/부업/알프랩/경쟁사/이너시아.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "이너시아"
             }
           }
         ]
@@ -177,15 +181,17 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "fbc5654915f0718d",
+  "active": "0cb1de11aabb1244",
   "lastOpenFiles": [
-    "wiki/부업/알프랩/경쟁사/이너시아.md",
+    "wiki/부업/알프랩/마케팅/뷰티디바이스_마케팅_성공방정식.md",
+    "sources/부업/알프랩/20260530_뷰티디바이스_마케팅_성공방정식.md",
     "wiki/부업/알프랩/경쟁사/에이피알.md",
+    "sources/부업/알프랩/20260530_뷰티디바이스_주요브랜드_플레이방식.md",
     "sources/부업/알프랩/20260528_알프랩_로드맵.md",
     "sources/부업/알프랩/20260524_홍대싱_주요5개사_플레이방식.md",
-    "sources/부업/알프랩/20260530_뷰티디바이스_주요브랜드_플레이방식.md",
     "wiki/부업/알프랩/홍콩대만싱가포르_시장진출전략.md",
     "wiki/부업/알프랩/뷰티디바이스_시장진출전략.md",
+    "wiki/부업/알프랩/경쟁사/이너시아.md",
     "wiki/companies/대한항공.md",
     "sources/투자/articles/20260530_0619_차이나_인바운드_붐.md",
     "wiki/투자/macro/위안화.md",
