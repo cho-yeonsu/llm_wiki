@@ -3,9 +3,8 @@ import re
 import json
 import asyncio
 from datetime import datetime
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from fastapi import FastAPI, HTTPException, Header
+from telegram import Bot
+from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 import uvicorn
 
@@ -18,13 +17,10 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 github = GitHubClient(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPO"])
 claude = ClaudeClient(os.environ["ANTHROPIC_API_KEY"])
+bot = Bot(token=TELEGRAM_TOKEN)
 
 
 # ─── 라우팅 ────────────────────────────────────────────────
-
-def extract_hashtags(text: str) -> set[str]:
-    return set(re.findall(r'#[가-힣a-zA-Z0-9_]+', text))
-
 
 def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
     """채널 ID와 해시태그로 도메인·타입·경로를 결정한다."""
@@ -73,7 +69,6 @@ def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
         }
 
     # 3. 아카이빙 채널 + ontology에 없는 해시태그 → 자유 라우팅
-    #    첫 번째 해시태그 = 도메인 폴더, 두 번째 해시태그 = 서브타입 힌트
     if is_archive_channel and hashtag_list:
         free_domain = hashtag_list[0].lstrip("#")
         free_hint = hashtag_list[1].lstrip("#") if len(hashtag_list) > 1 else None
@@ -148,8 +143,31 @@ async def health():
     return {"ok": True}
 
 
+@api.post("/telegram")
+async def telegram_webhook(request: Request):
+    """텔레그램이 메시지를 직접 쏴주는 웹훅 엔드포인트."""
+    data = await request.json()
+
+    message = data.get("channel_post") or data.get("message")
+    if not message:
+        return {"ok": True}
+
+    text = message.get("text") or message.get("caption") or ""
+    if not text.strip():
+        return {"ok": True}
+
+    chat_id = message["chat"]["id"]
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    print(f"[{date_str}] 텔레그램 웹훅 (chat_id={chat_id}): {text[:80]}...")
+
+    # 텔레그램은 5초 내 응답을 요구 → 백그라운드로 실행
+    asyncio.create_task(run_ingest(text, chat_id=chat_id))
+    return {"ok": True}
+
+
 @api.post("/ingest")
 async def webhook_ingest(req: IngestRequest, authorization: str = Header(None)):
+    """iOS 단축어 등 외부 웹훅용 엔드포인트."""
     if WEBHOOK_SECRET and authorization != f"Bearer {WEBHOOK_SECRET}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -166,7 +184,6 @@ async def webhook_ingest(req: IngestRequest, authorization: str = Header(None)):
     print(f"[{date_str}] 웹훅 수신: {req.title or req.url or '(제목 없음)'}...")
 
     try:
-        # 웹훅은 chat_id 없음 → 해시태그만으로 라우팅
         result = await run_ingest(full_text, chat_id=0)
         return {"ok": True, **result}
     except Exception as e:
@@ -174,51 +191,9 @@ async def webhook_ingest(req: IngestRequest, authorization: str = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Telegram 핸들러 ───────────────────────────────────────
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.channel_post or update.message
-    if not message:
-        return
-
-    text = message.text or message.caption or ""
-    if not text.strip():
-        return
-
-    chat_id = message.chat.id
-    date_str = datetime.now().strftime("%Y%m%d_%H%M")
-    print(f"[{date_str}] 텔레그램 (chat_id={chat_id}): {text[:80]}...")
-
-    try:
-        await run_ingest(text, chat_id=chat_id)
-    except Exception as e:
-        print(f"❌ 처리 실패: {e}")
-        raise
-
-
-# ─── 동시 실행 ─────────────────────────────────────────────
-
-async def run_telegram(tg_app):
-    async with tg_app:
-        await tg_app.start()
-        await tg_app.updater.start_polling(allowed_updates=["channel_post", "message"])
-        print("🤖 텔레그램 봇 시작...")
-        await asyncio.Event().wait()
-
-
-async def run_fastapi():
-    port = int(os.environ.get("PORT", 8000))
-    config = uvicorn.Config(api, host="0.0.0.0", port=port, log_level="info")
-    server = uvicorn.Server(config)
-    print(f"🌐 웹훅 서버 시작 (port {port})...")
-    await server.serve()
-
-
-async def main_async():
-    tg_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    tg_app.add_handler(MessageHandler(filters.ALL, handle_message))
-    await asyncio.gather(run_fastapi(), run_telegram(tg_app))
-
+# ─── 실행 ──────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    asyncio.run(main_async())
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🌐 서버 시작 (port {port})...")
+    uvicorn.run(api, host="0.0.0.0", port=port, log_level="info")

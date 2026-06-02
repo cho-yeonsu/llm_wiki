@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: llm-wiki-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd bot && python main.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
