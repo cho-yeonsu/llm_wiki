@@ -1,0 +1,100 @@
+{
+  "version": "1.0",
+
+  "channels": {
+    "-1002152291272": {
+      "name": "투자 채널",
+      "auto_domain": "투자"
+    },
+    "-1002149147213": {
+      "name": "아카이빙 채널",
+      "auto_domain": null
+    }
+  },
+
+  "domains": {
+    "투자": {
+      "hashtag": "#투자",
+      "source_base": "sources/투자/articles/",
+      "types": {
+        "company": {
+          "hashtag": "#종목",
+          "path": "wiki/투자/companies/",
+          "naming": "종목명.md (한국) 또는 티커.md (해외). 예: 대한항공.md, NVDA.md",
+          "when": "특정 기업·종목에 대한 실적, 뉴스, 분석"
+        },
+        "sector": {
+          "hashtag": "#섹터",
+          "path": "wiki/투자/sectors/",
+          "naming": "산업명.md. 예: 항공.md, 여행.md",
+          "when": "산업·섹터 전반의 흐름, 구조, 경쟁 구도"
+        },
+        "concept": {
+          "hashtag": "#개념",
+          "path": "wiki/투자/concepts/",
+          "naming": "개념명.md. 예: 한일령.md, 차이나인바운드.md",
+          "when": "투자 개념, 지표, 이벤트 드라이버, 테마"
+        },
+        "macro": {
+          "hashtag": "#매크로",
+          "path": "wiki/투자/macro/",
+          "naming": "요인명.md. 예: 위안화.md, 유가.md",
+          "when": "거시경제 변수 — 환율, 금리, 원자재, 정책"
+        }
+      },
+      "default_type": null
+    },
+
+    "알프랩": {
+      "hashtag": "#알프랩",
+      "source_base": "sources/부업/알프랩/",
+      "types": {
+        "market_trend": {
+          "hashtag": "#트렌드",
+          "path": "wiki/부업/알프랩/시장트렌드/",
+          "naming": "트렌드명.md. 예: 뷰티디바이스트렌드.md",
+          "when": "시장 흐름, 소비자 트렌드, 카테고리 성장"
+        },
+        "brand_strategy": {
+          "hashtag": "#브랜드",
+          "path": "wiki/부업/알프랩/브랜드전략/",
+          "naming": "브랜드명.md. 예: 에이피알.md, 셀비전.md",
+          "when": "특정 브랜드의 전략, 포지셔닝, 플레이 방식"
+        },
+        "marketing": {
+          "hashtag": "#마케팅",
+          "path": "wiki/부업/알프랩/마케팅/",
+          "naming": "주제명.md. 예: 뷰티디바이스_마케팅_성공방정식.md",
+          "when": "마케팅 전략, 콘텐츠, SNS, 광고 채널"
+        },
+        "competitor": {
+          "hashtag": "#경쟁사",
+          "path": "wiki/부업/알프랩/경쟁사/",
+          "naming": "브랜드명.md. 예: 라운드랩.md",
+          "when": "경쟁 브랜드 분석, 비교"
+        },
+        "product": {
+          "hashtag": "#제품",
+          "path": "wiki/부업/알프랩/제품개발/",
+          "naming": "제품·원료명.md. 예: EMS디바이스.md",
+          "when": "제품 기획, 원료, 제형, 기술"
+        },
+        "commerce": {
+          "hashtag": "#커머스",
+          "path": "wiki/부업/알프랩/유통커머스/",
+          "naming": "채널명.md. 예: 올리브영.md, 라이브커머스.md",
+          "when": "유통 채널, 플랫폼, 커머스 전략"
+        }
+      },
+      "default_type": null
+    }
+  },
+
+  "required_frontmatter": {
+    "fields": ["summary", "tags", "updated"],
+    "format": "**{field}**: 값"
+  },
+
+  "link_format": "[[페이지명]]",
+  "source_naming": "YYYYMMDD_설명.md"
+}
