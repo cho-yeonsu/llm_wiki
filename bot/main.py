@@ -3,7 +3,6 @@ import re
 import json
 import asyncio
 from datetime import datetime
-from telegram import Bot
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 import uvicorn
@@ -17,7 +16,6 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 github = GitHubClient(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPO"])
 claude = ClaudeClient(os.environ["ANTHROPIC_API_KEY"])
-bot = Bot(token=TELEGRAM_TOKEN)
 
 
 # ─── 라우팅 ────────────────────────────────────────────────
@@ -161,7 +159,13 @@ async def telegram_webhook(request: Request):
     print(f"[{date_str}] 텔레그램 웹훅 (chat_id={chat_id}): {text[:80]}...")
 
     # 텔레그램은 5초 내 응답을 요구 → 백그라운드로 실행
-    asyncio.create_task(run_ingest(text, chat_id=chat_id))
+    async def safe_ingest():
+        try:
+            await run_ingest(text, chat_id=chat_id)
+        except Exception as e:
+            print(f"❌ ingest 실패: {e}")
+
+    asyncio.create_task(safe_ingest())
     return {"ok": True}
 
 
