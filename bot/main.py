@@ -6,6 +6,8 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 import uvicorn
+import httpx
+from bs4 import BeautifulSoup
 
 from github_client import GitHubClient
 from claude_client import ClaudeClient
@@ -16,6 +18,54 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 github = GitHubClient(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPO"])
 claude = ClaudeClient(os.environ["ANTHROPIC_API_KEY"])
+
+
+# ─── URL / 파일 fetch ──────────────────────────────────────
+
+_SUPPORTED_EXTS = {"pdf", "txt", "md"}
+_SUPPORTED_MIMES = {"application/pdf", "text/plain", "text/markdown", "text/x-markdown"}
+
+
+async def fetch_url_content(url: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "")
+            if "text/html" in content_type:
+                soup = BeautifulSoup(resp.text, "lxml")
+                for tag in soup(["script", "style", "nav", "header", "footer"]):
+                    tag.decompose()
+                return soup.get_text(separator="\n", strip=True)
+            return resp.text
+    except Exception as e:
+        return f"(URL 읽기 실패: {e})"
+
+
+async def fetch_telegram_file_content(file_id: str, mime_type: str, file_name: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile",
+                params={"file_id": file_id},
+            )
+            resp.raise_for_status()
+            file_path = resp.json()["result"]["file_path"]
+
+            file_resp = await client.get(
+                f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+            )
+            file_resp.raise_for_status()
+            data = file_resp.content
+
+        ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+        if mime_type == "application/pdf" or ext == "pdf":
+            import fitz
+            doc = fitz.open(stream=data, filetype="pdf")
+            return "\n".join(page.get_text() for page in doc)
+        return data.decode("utf-8", errors="replace")
+    except Exception as e:
+        return f"(파일 읽기 실패: {e})"
 
 
 # ─── 라우팅 ────────────────────────────────────────────────
@@ -151,7 +201,28 @@ async def telegram_webhook(request: Request):
         return {"ok": True}
 
     text = message.get("text") or message.get("caption") or ""
-    if not text.strip():
+    document = message.get("document")
+
+    # 문서 파일 지원 여부 확인
+    supported_doc = None
+    if document:
+        mime_type = document.get("mime_type", "")
+        file_name = document.get("file_name", "")
+        ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+        if mime_type in _SUPPORTED_MIMES or ext in _SUPPORTED_EXTS:
+            supported_doc = document
+
+    # URL 엔티티 추출 (텍스트/캡션 공통)
+    entities = message.get("entities") or message.get("caption_entities") or []
+    urls = []
+    for entity in entities:
+        if entity["type"] == "url":
+            offset, length = entity["offset"], entity["length"]
+            urls.append(text[offset:offset + length])
+        elif entity["type"] == "text_link":
+            urls.append(entity["url"])
+
+    if not text.strip() and not supported_doc:
         return {"ok": True}
 
     chat_id = message["chat"]["id"]
@@ -161,7 +232,27 @@ async def telegram_webhook(request: Request):
     # 텔레그램은 5초 내 응답을 요구 → 백그라운드로 실행
     async def safe_ingest():
         try:
-            await run_ingest(text, chat_id=chat_id)
+            parts = []
+            if text:
+                parts.append(text)
+
+            if supported_doc:
+                file_name = supported_doc.get("file_name", "file")
+                print(f"  파일 다운로드: {file_name}")
+                content = await fetch_telegram_file_content(
+                    supported_doc["file_id"],
+                    supported_doc.get("mime_type", ""),
+                    file_name,
+                )
+                parts.append(f"[첨부파일: {file_name}]\n{content}")
+
+            for url in urls:
+                print(f"  URL fetch: {url}")
+                url_content = await fetch_url_content(url)
+                parts.append(f"[링크 내용: {url}]\n{url_content}")
+
+            full_text = "\n\n".join(parts)
+            await run_ingest(full_text, chat_id=chat_id)
         except Exception as e:
             print(f"❌ ingest 실패: {e}")
 
