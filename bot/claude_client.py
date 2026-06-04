@@ -93,7 +93,7 @@ wiki 경로: {routing['path']}  ← 신규 페이지는 반드시 이 경로 아
 위 소스를 wiki에 통합해줘. JSON으로만 응답해."""
 
         response = self.client.messages.create(
-            model="claude-opus-4-8",
+            model="claude-sonnet-4-6",
             max_tokens=8000,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
