@@ -1,0 +1,9 @@
+{
+  "companies": [
+    {"name": "SK하이닉스",   "corp_code": "00164779"},
+    {"name": "삼성전기",     "corp_code": "00126380"},
+    {"name": "OCI홀딩스",   "corp_code": "00546866"},
+    {"name": "대한항공",     "corp_code": "00114703"},
+    {"name": "디앤디파마텍", "corp_code": "01375301"}
+  ]
+}
