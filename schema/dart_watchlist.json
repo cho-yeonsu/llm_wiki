@@ -1,4 +1,5 @@
 {
+  "disclosure_types": ["B", "I"],
   "companies": [
     {"name": "SK하이닉스",   "corp_code": "00164779"},
     {"name": "삼성전기",     "corp_code": "00126380"},

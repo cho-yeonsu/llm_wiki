@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install httpx
+        run: pip install -r bot/requirements.txt
 
       - name: Collect DART disclosures
         run: python bot/dart_collector.py
