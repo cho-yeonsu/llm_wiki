@@ -6,6 +6,7 @@ import asyncio
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 import uvicorn
@@ -43,7 +44,70 @@ _FETCH_HEADERS = {
 }
 
 
+def _naver_blog_rss_url(url: str) -> tuple[str | None, str | None]:
+    """Naver 블로그 URL에서 (rss_url, log_no)를 반환한다."""
+    parsed = urlparse(url)
+    if "blog.naver.com" not in parsed.netloc:
+        return None, None
+    qs = parse_qs(parsed.query)
+    if "blogId" in qs:
+        blog_id = qs["blogId"][0]
+        log_no = qs.get("logNo", [None])[0]
+    else:
+        parts = [p for p in parsed.path.split("/") if p and "." not in p]
+        if len(parts) < 1:
+            return None, None
+        blog_id = parts[0]
+        log_no = parts[1] if len(parts) >= 2 else None
+    return f"https://rss.blog.naver.com/{blog_id}", log_no
+
+
+async def fetch_naver_blog_rss(url: str) -> str | None:
+    """Naver 블로그를 RSS로 우회해 본문을 가져온다. 실패 시 None."""
+    rss_url, log_no = _naver_blog_rss_url(url)
+    if not rss_url:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            resp = await client.get(rss_url, headers=_FETCH_HEADERS)
+            resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        items = root.findall(".//item")
+        if not items:
+            return None
+        matched = None
+        if log_no:
+            for item in items:
+                link = item.findtext("link") or ""
+                if log_no in link:
+                    matched = item
+                    break
+        if matched is None:
+            matched = items[0]
+        title = matched.findtext("title") or ""
+        pub_date = matched.findtext("pubDate") or ""
+        desc = matched.findtext("description") or ""
+        soup = BeautifulSoup(desc, "lxml")
+        content = soup.get_text(separator="\n", strip=True)
+        parts = []
+        if title:
+            parts.append(f"## {title}")
+        if pub_date:
+            parts.append(f"발행일: {pub_date}")
+        if content:
+            parts.append(content)
+        return "\n\n".join(parts) if parts else None
+    except Exception as e:
+        print(f"  Naver RSS 실패 ({rss_url}): {e}")
+        return None
+
+
 async def fetch_url_content(url: str) -> str:
+    # Naver 블로그 → RSS 우회
+    if "blog.naver.com" in url:
+        result = await fetch_naver_blog_rss(url)
+        if result:
+            return result
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             resp = await client.get(url, headers=_FETCH_HEADERS)
