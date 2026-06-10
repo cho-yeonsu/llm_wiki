@@ -4,7 +4,6 @@
 import os
 import re
 import json
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,7 +11,7 @@ from github_client import GitHubClient
 from claude_client import ClaudeClient
 from validator import validate_ingest_result
 
-LAST_BATCH_FILE = "schema/last_batch_at.txt"
+PROCESSED_MARKER = "**wiki 반영**:"
 
 
 # ─── Wiki 필터링 ──────────────────────────────────────────
@@ -50,25 +49,28 @@ def filter_wiki_files(source_text: str, wiki_files: dict[str, str], top_n: int =
     return {p: wiki_files[p] for p in sorted_paths[:top_n]}
 
 
-# ─── 새 소스 탐색 ─────────────────────────────────────────
+# ─── 소스 탐색 / 마커 ─────────────────────────────────────
 
-def get_new_source_paths(since_iso: str) -> list[Path]:
-    """since 이후에 커밋된 sources/ 하위 .md 파일 목록."""
-    result = subprocess.run(
-        ["git", "log", f"--since={since_iso}", "--name-only",
-         "--pretty=format:", "--diff-filter=A", "--", "sources/"],
-        capture_output=True, text=True,
-    )
+def get_unprocessed_source_paths() -> list[Path]:
+    """PROCESSED_MARKER가 없는 sources/ 하위 .md 파일 목록."""
     paths = []
-    seen = set()
-    for line in result.stdout.split('\n'):
-        line = line.strip()
-        if line.endswith('.md') and line not in seen:
-            seen.add(line)
-            p = Path(line)
-            if p.exists():
-                paths.append(p)
+    for p in sorted(Path("sources").rglob("*.md")):
+        if PROCESSED_MARKER not in p.read_text(encoding='utf-8'):
+            paths.append(p)
     return paths
+
+
+def add_processed_marker(content: str, date_str: str) -> str:
+    """**수집일**: 줄 바로 다음에 **wiki 반영**: 줄을 삽입한다."""
+    marker_line = f"{PROCESSED_MARKER} {date_str}"
+    lines = content.split('\n')
+    for i, line in enumerate(lines):
+        if line.strip().startswith('**수집일**:'):
+            lines.insert(i + 1, marker_line)
+            return '\n'.join(lines)
+    # **수집일** 줄이 없으면 두 번째 줄에 삽입
+    lines.insert(1, marker_line)
+    return '\n'.join(lines)
 
 
 # ─── 배치 실행 ────────────────────────────────────────────
@@ -77,22 +79,21 @@ def main():
     github = GitHubClient(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPO"])
     claude_client = ClaudeClient(os.environ["ANTHROPIC_API_KEY"])
 
-    last_batch = (github.get_file(LAST_BATCH_FILE) or "").strip() or "1970-01-01T00:00:00+00:00"
-    print(f"마지막 배치: {last_batch}")
-
-    new_sources = get_new_source_paths(last_batch)
-    if not new_sources:
-        print("새 소스 없음. 종료.")
+    unprocessed = get_unprocessed_source_paths()
+    if not unprocessed:
+        print("미처리 소스 없음. 종료.")
         return
 
-    print(f"새 소스 {len(new_sources)}개 처리 시작\n")
+    print(f"미처리 소스 {len(unprocessed)}개 처리 시작\n")
 
     schema = github.get_file("schema/SCHEMA.md")
     ontology_str = github.get_file("schema/ontology.json")
     ontology = json.loads(ontology_str) if ontology_str else {}
 
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     success = 0
-    for source_path in new_sources:
+
+    for source_path in unprocessed:
         source_text = source_path.read_text(encoding='utf-8')
         print(f"[{source_path}]")
 
@@ -118,21 +119,21 @@ def main():
                 item["path"]: item["content"]
                 for item in result.get("wiki_updates", [])
             }
-            if wiki_updates:
-                title = result.get("title", source_path.stem)
-                github.commit_files(wiki_updates, f"wiki: {title}")
-                print(f"  ✅ wiki {len(wiki_updates)}개 업데이트")
-            else:
-                print("  wiki 업데이트 없음")
+
+            # 소스 파일에 처리 완료 마커 추가
+            marked_source = add_processed_marker(source_text, today)
+            files_to_commit = {**wiki_updates, str(source_path): marked_source}
+
+            title = result.get("title", source_path.stem)
+            github.commit_files(files_to_commit, f"wiki: {title}")
+            print(f"  ✅ wiki {len(wiki_updates)}개 업데이트, 소스 마커 추가")
 
             success += 1
 
         except Exception as e:
             print(f"  ❌ 실패: {e}")
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    github.commit_files({LAST_BATCH_FILE: now_iso}, "chore: update last_batch_at")
-    print(f"\n배치 완료: {success}/{len(new_sources)} 성공 ({now_iso})")
+    print(f"\n배치 완료: {success}/{len(unprocessed)} 성공")
 
 
 if __name__ == "__main__":
