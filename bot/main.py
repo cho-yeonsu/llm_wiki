@@ -28,17 +28,41 @@ CODES_PATH = "schema/codes.yaml"
 _SUPPORTED_EXTS = {"pdf", "txt", "md"}
 _SUPPORTED_MIMES = {"application/pdf", "text/plain", "text/markdown", "text/x-markdown"}
 
+_URL_RE = re.compile(r'https?://[^\s\)\]">\']+')
+
+_FETCH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 
 async def fetch_url_content(url: str) -> str:
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = await client.get(url, headers=_FETCH_HEADERS)
+            if resp.status_code in (403, 401):
+                return f"(접근 차단 {resp.status_code} — 해당 사이트가 클라우드 IP를 차단함)"
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "")
             if "text/html" in content_type:
                 soup = BeautifulSoup(resp.text, "lxml")
-                for tag in soup(["script", "style", "nav", "header", "footer"]):
+                for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
                     tag.decompose()
+                # 본문 영역 우선 탐색
+                main = (
+                    soup.find("article")
+                    or soup.find(id=re.compile(r"article|content|body|main", re.I))
+                    or soup.find(class_=re.compile(r"article|content|body|main", re.I))
+                )
+                if main:
+                    return main.get_text(separator="\n", strip=True)
                 return soup.get_text(separator="\n", strip=True)
             return resp.text
     except Exception as e:
@@ -385,14 +409,19 @@ async def telegram_webhook(request: Request):
         if mime_type in _SUPPORTED_MIMES or ext in _SUPPORTED_EXTS:
             supported_doc = document
 
+    # Telegram entities로 URL 추출 (공식)
     entities = message.get("entities") or message.get("caption_entities") or []
-    urls = []
+    url_set: set[str] = set()
     for entity in entities:
         if entity["type"] == "url":
             offset, length = entity["offset"], entity["length"]
-            urls.append(text[offset:offset + length])
+            url_set.add(text[offset:offset + length])
         elif entity["type"] == "text_link":
-            urls.append(entity["url"])
+            url_set.add(entity["url"])
+    # 정규식 fallback (포워드 메시지 등 entities가 없는 경우)
+    for raw_url in _URL_RE.findall(text):
+        url_set.add(raw_url.rstrip(".,;:)"))
+    urls = list(url_set)
 
     if not text.strip() and not supported_doc:
         return {"ok": True}
