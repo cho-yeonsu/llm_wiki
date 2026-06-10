@@ -10,14 +10,11 @@ import httpx
 from bs4 import BeautifulSoup
 
 from github_client import GitHubClient
-from claude_client import ClaudeClient
-from validator import validate_ingest_result
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 github = GitHubClient(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPO"])
-claude = ClaudeClient(os.environ["ANTHROPIC_API_KEY"])
 
 
 # ─── URL / 파일 fetch ──────────────────────────────────────
@@ -68,56 +65,17 @@ async def fetch_telegram_file_content(file_id: str, mime_type: str, file_name: s
         return f"(파일 읽기 실패: {e})"
 
 
-# ─── Wiki 필터링 ──────────────────────────────────────────
-
-def extract_keywords(text: str) -> set[str]:
-    keywords = set()
-    keywords.update(re.findall(r'#([가-힣a-zA-Z0-9_]+)', text))          # 해시태그
-    keywords.update(re.findall(r'\b[A-Z][A-Za-z0-9]{1,}\b', text))       # 영문 대문자 시작 (회사명, 종목명)
-    keywords.update(re.findall(r'[가-힣]{2,}', text))                     # 한글 2글자 이상
-    return keywords
-
-
-def filter_wiki_files(source_text: str, wiki_files: dict[str, str], top_n: int = 15) -> dict[str, str]:
-    if len(wiki_files) <= top_n:
-        return wiki_files
-
-    keywords = extract_keywords(source_text)
-    if not keywords:
-        return dict(list(wiki_files.items())[:top_n])
-
-    scores: dict[str, int] = {}
-    for path, content in wiki_files.items():
-        score = 0
-        filename = path.rsplit('/', 1)[-1].replace('.md', '')
-        for kw in keywords:
-            if not kw:
-                continue
-            if kw in filename or filename in kw:
-                score += 5       # 파일명 일치 (가중치 높음)
-            if kw in path:
-                score += 2       # 경로(디렉토리) 일치
-            if len(kw) >= 2 and kw in content[:300]:
-                score += 1       # 본문 앞부분 일치
-        if score > 0:
-            scores[path] = score
-
-    sorted_paths = sorted(scores, key=lambda p: scores[p], reverse=True)
-    return {p: wiki_files[p] for p in sorted_paths[:top_n]}
-
-
 # ─── 라우팅 ────────────────────────────────────────────────
 
 def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
     """채널 ID와 해시태그로 도메인·타입·경로를 결정한다."""
     channels = ontology.get("channels", {})
     channel_cfg = channels.get(str(chat_id), {})
-    hashtag_list = re.findall(r'#[가-힣a-zA-Z0-9_]+', text)  # 순서 보존
+    hashtag_list = re.findall(r'#[가-힣a-zA-Z0-9_]+', text)
     hashtags = set(hashtag_list)
     domains = ontology.get("domains", {})
     is_archive_channel = channel_cfg.get("auto_domain") is None and str(chat_id) in channels
 
-    # 1. 도메인: 채널 설정(auto_domain) 우선, 없으면 해시태그에서 읽기
     domain = channel_cfg.get("auto_domain")
     matched_domain_cfg = None
 
@@ -130,7 +88,6 @@ def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
     elif domain in domains:
         matched_domain_cfg = domains[domain]
 
-    # 2. ontology에 정의된 도메인 → strict routing
     if matched_domain_cfg:
         node_type = None
         for t_name, t_cfg in matched_domain_cfg["types"].items():
@@ -154,7 +111,6 @@ def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
             "is_free": False,
         }
 
-    # 3. 아카이빙 채널 + ontology에 없는 해시태그 → 자유 라우팅
     if is_archive_channel and hashtag_list:
         free_domain = hashtag_list[0].lstrip("#")
         free_hint = hashtag_list[1].lstrip("#") if len(hashtag_list) > 1 else None
@@ -169,52 +125,33 @@ def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
             "naming": None, "when": None, "is_free": False}
 
 
-# ─── Ingest ────────────────────────────────────────────────
+# ─── 소스 저장 ─────────────────────────────────────────────
 
-async def run_ingest(text: str, chat_id: int = 0) -> dict:
+async def save_source(text: str, chat_id: int = 0) -> dict:
+    """Claude 호출 없이 소스 파일만 저장한다. wiki 업데이트는 배치에서 처리."""
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    date_display = datetime.now().strftime("%Y-%m-%d")
 
-    wiki_files = github.get_wiki_files()
-    schema = github.get_file("schema/SCHEMA.md")
     ontology_str = github.get_file("schema/ontology.json")
     ontology = json.loads(ontology_str) if ontology_str else {}
-
     routing = resolve_routing(chat_id, text, ontology)
 
-    if routing.get("domain"):
-        print(f"  라우팅: {routing['domain']} / {routing['node_type']} → {routing['path']}")
-    else:
-        print("  라우팅: 미결정 (LLM 자율 추론)")
+    source_base = routing.get("source_base") or "sources/inbox/"
 
-    relevant_wiki = filter_wiki_files(text, wiki_files)
-    if len(wiki_files) != len(relevant_wiki):
-        print(f"  wiki 필터링: {len(wiki_files)}개 → {len(relevant_wiki)}개")
+    title = date_str
+    for line in text.split('\n'):
+        line = line.strip().lstrip('#').strip()
+        if line and not line.startswith('http') and len(line) > 1:
+            title = line[:40]
+            break
 
-    result = claude.ingest(
-        source_text=text,
-        date_str=date_str,
-        wiki_files=relevant_wiki,
-        schema=schema,
-        ontology=ontology_str,
-        routing=routing,
-    )
+    safe_title = re.sub(r'[^\w가-힣]', '_', title)
+    path = f"{source_base}{date_str}_{safe_title}.md"
+    content = f"# {title}\n\n**수집일**: {date_display}\n\n{text}"
 
-    errors = validate_ingest_result(result, ontology, routing)
-    if errors:
-        print(f"⚠️ 검증 경고 {len(errors)}건:")
-        for e in errors:
-            print(f"  - {e}")
-
-    files_to_commit = {result["source_file"]["path"]: result["source_file"]["content"]}
-    for update_item in result.get("wiki_updates", []):
-        files_to_commit[update_item["path"]] = update_item["content"]
-
-    commit_msg = f"ingest: {result.get('title', date_str)}"
-    github.commit_files(files_to_commit, commit_msg)
-
-    updated = list(files_to_commit.keys())
-    print(f"✅ {len(updated)}개 파일 커밋: {updated}")
-    return {"title": result.get("title"), "files": updated}
+    github.commit_files({path: content}, f"source: {title}")
+    print(f"✅ 소스 저장: {path}")
+    return {"path": path, "title": title}
 
 
 # ─── FastAPI 앱 ────────────────────────────────────────────
@@ -245,7 +182,6 @@ async def telegram_webhook(request: Request):
     text = message.get("text") or message.get("caption") or ""
     document = message.get("document")
 
-    # 문서 파일 지원 여부 확인
     supported_doc = None
     if document:
         mime_type = document.get("mime_type", "")
@@ -254,7 +190,6 @@ async def telegram_webhook(request: Request):
         if mime_type in _SUPPORTED_MIMES or ext in _SUPPORTED_EXTS:
             supported_doc = document
 
-    # URL 엔티티 추출 (텍스트/캡션 공통)
     entities = message.get("entities") or message.get("caption_entities") or []
     urls = []
     for entity in entities:
@@ -271,8 +206,7 @@ async def telegram_webhook(request: Request):
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     print(f"[{date_str}] 텔레그램 웹훅 (chat_id={chat_id}): {text[:80]}...")
 
-    # 텔레그램은 5초 내 응답을 요구 → 백그라운드로 실행
-    async def safe_ingest():
+    async def safe_save():
         try:
             parts = []
             if text:
@@ -281,12 +215,12 @@ async def telegram_webhook(request: Request):
             if supported_doc:
                 file_name = supported_doc.get("file_name", "file")
                 print(f"  파일 다운로드: {file_name}")
-                content = await fetch_telegram_file_content(
+                file_content = await fetch_telegram_file_content(
                     supported_doc["file_id"],
                     supported_doc.get("mime_type", ""),
                     file_name,
                 )
-                parts.append(f"[첨부파일: {file_name}]\n{content}")
+                parts.append(f"[첨부파일: {file_name}]\n{file_content}")
 
             for url in urls:
                 print(f"  URL fetch: {url}")
@@ -294,11 +228,11 @@ async def telegram_webhook(request: Request):
                 parts.append(f"[링크 내용: {url}]\n{url_content}")
 
             full_text = "\n\n".join(parts)
-            await run_ingest(full_text, chat_id=chat_id)
+            await save_source(full_text, chat_id=chat_id)
         except Exception as e:
-            print(f"❌ ingest 실패: {e}")
+            print(f"❌ 소스 저장 실패: {e}")
 
-    asyncio.create_task(safe_ingest())
+    asyncio.create_task(safe_save())
     return {"ok": True}
 
 
@@ -321,10 +255,10 @@ async def webhook_ingest(req: IngestRequest, authorization: str = Header(None)):
     print(f"[{date_str}] 웹훅 수신: {req.title or req.url or '(제목 없음)'}...")
 
     try:
-        result = await run_ingest(full_text, chat_id=0)
+        result = await save_source(full_text, chat_id=0)
         return {"ok": True, **result}
     except Exception as e:
-        print(f"❌ 처리 실패: {e}")
+        print(f"❌ 저장 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -1,0 +1,31 @@
+name: Weekly Wiki Batch
+
+on:
+  schedule:
+    - cron: '0 15 * * 0'  # 매주 일요일 자정 KST (UTC 15:00)
+  workflow_dispatch:        # 수동 실행 가능
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # git log --since 에 전체 히스토리 필요
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r bot/requirements.txt
+
+      - name: Run batch
+        run: python bot/batch.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
