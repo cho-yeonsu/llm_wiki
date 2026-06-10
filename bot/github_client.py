@@ -28,6 +28,18 @@ class GitHubClient:
             pass
         return files
 
+    def get_source_file_paths(self) -> list[str]:
+        """sources/ 하위 .md 파일 경로 목록을 git tree 1회 조회로 가져온다."""
+        try:
+            ref = self.repo.get_git_ref("heads/main")
+            tree = self.repo.get_git_tree(ref.object.sha, recursive=True)
+            return [
+                item.path for item in tree.tree
+                if item.path.startswith("sources/") and item.path.endswith(".md")
+            ]
+        except Exception:
+            return []
+
     def commit_files(self, files: dict[str, str], commit_message: str):
         """여러 파일을 단일 커밋으로 저장"""
         ref = self.repo.get_git_ref("heads/main")

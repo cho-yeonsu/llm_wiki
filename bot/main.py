@@ -307,6 +307,90 @@ async def dart_search_company(keyword: str) -> list[dict]:
         return []
 
 
+# ─── RAG 질의응답 ──────────────────────────────────────────
+
+_RAG_SYSTEM = """당신은 사용자의 투자 리서치 노트를 기반으로 질문에 답변하는 AI 어시스턴트입니다.
+아래 소스 자료를 참고해서 질문에 답변하세요.
+- 한국어로 간결하게 답변하세요
+- 근거가 되는 파일명(날짜 포함)을 인용하세요
+- 소스에 없는 내용은 "소스에 없음"이라고 하세요"""
+
+
+def _rag_keywords(text: str) -> set[str]:
+    kws: set[str] = set()
+    kws.update(re.findall(r'#([가-힣a-zA-Z0-9_]+)', text))
+    kws.update(re.findall(r'\b[A-Z][A-Za-z0-9]{1,}\b', text))
+    kws.update(re.findall(r'[가-힣]{2,}', text))
+    return {k for k in kws if len(k) >= 2}
+
+
+def _score_source_paths(question: str, paths: list[str], top_n: int = 12) -> list[str]:
+    keywords = _rag_keywords(question)
+    if not keywords:
+        return sorted(paths)[-top_n:]  # 최근 파일 fallback
+    scored: list[tuple[int, str]] = []
+    for path in paths:
+        filename = path.rsplit("/", 1)[-1].replace(".md", "")
+        score = sum(
+            5 if kw in filename else (2 if kw in path else 0)
+            for kw in keywords
+        )
+        if score > 0:
+            scored.append((score, path))
+    scored.sort(reverse=True)
+    result = [p for _, p in scored[:top_n]]
+    return result or sorted(paths)[-top_n:]  # 매칭 없으면 최근 파일
+
+
+async def ask_claude_rag(question: str, source_files: dict[str, str]) -> str:
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    context = "\n\n".join(
+        f"--- {path} ---\n{content[:2500]}"
+        for path, content in source_files.items()
+    )
+    resp = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1500,
+        system=_RAG_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"== 소스 자료 ({len(source_files)}개) ==\n\n{context}\n\n---\n\n질문: {question}",
+        }],
+    )
+    return resp.content[0].text
+
+
+async def handle_ask(chat_id: int, question: str) -> None:
+    if not question:
+        await send_telegram_message(chat_id, "사용법: /ask 질문\n예) /ask SK하이닉스 최근 뭐가 있었어?")
+        return
+    try:
+        await send_telegram_message(chat_id, "🔍 소스 검색 중...")
+
+        all_paths = github.get_source_file_paths()
+        if not all_paths:
+            await send_telegram_message(chat_id, "저장된 소스가 없습니다.")
+            return
+
+        top_paths = _score_source_paths(question, all_paths)
+        source_files = {}
+        for p in top_paths:
+            content = github.get_file(p)
+            if content:
+                source_files[p] = content
+
+        answer = await ask_claude_rag(question, source_files)
+
+        # Telegram 메시지 4096자 제한
+        if len(answer) > 4000:
+            answer = answer[:4000] + "\n\n…(이하 생략)"
+        await send_telegram_message(chat_id, answer)
+
+    except Exception as e:
+        await send_telegram_message(chat_id, f"❌ 오류: {e}")
+
+
 # ─── 관심종목 명령어 ────────────────────────────────────────
 
 async def handle_watchlist(chat_id: int) -> None:
@@ -453,6 +537,9 @@ async def telegram_webhook(request: Request):
         cmd = parts[0].lower().split("@")[0]  # /cmd@botname 형식 대응
         cmd_args = parts[1].strip() if len(parts) > 1 else ""
 
+        if cmd == "/ask":
+            asyncio.create_task(handle_ask(chat_id, cmd_args))
+            return {"ok": True}
         if cmd == "/watch":
             asyncio.create_task(handle_watch(chat_id, cmd_args))
             return {"ok": True}
