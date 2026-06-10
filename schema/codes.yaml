@@ -1,0 +1,63 @@
+# 엔티티 표준 코드 SSOT
+# canonical: 위키 파일명 및 [[위키링크]]에 사용되는 공식 이름
+# aliases: Claude나 소스에서 사용될 수 있는 다른 표현들
+# dart_collect: true이면 DART 공시 자동 수집 대상
+
+companies:
+
+  # ── 국내 기업 ──────────────────────────────────────────
+  - canonical: 삼성전기
+    aliases: [삼성전기(주), Samsung Electro-Mechanics, SEMCO]
+    kr_code: "009150"
+    dart_corp_code: "00126380"
+    dart_collect: true
+
+  - canonical: SK하이닉스
+    aliases: [SK Hynix, SK하이닉스(주), SKHynix, Hynix]
+    kr_code: "000660"
+    dart_corp_code: "00164779"
+    dart_collect: true
+
+  - canonical: OCI홀딩스
+    aliases: [OCI Holdings, OCI홀딩스(주), OCI]
+    kr_code: "010060"
+    dart_corp_code: "00546866"
+    dart_collect: true
+
+  - canonical: 대한항공
+    aliases: [Korean Air, 대한항공(주), KAL]
+    kr_code: "003490"
+    dart_corp_code: "00114703"
+    dart_collect: true
+
+  - canonical: 디앤디파마텍
+    aliases: [D&D Pharmatech, D&D파마텍]
+    kr_code: "347890"
+    dart_corp_code: "01375301"
+    dart_collect: true
+
+  # ── 해외 기업 ──────────────────────────────────────────
+  - canonical: 엔비디아
+    aliases: [NVIDIA, Nvidia, NVDA]
+    us_ticker: NVDA
+    dart_collect: false
+
+  - canonical: 플루언스에너지
+    aliases: [Fluence Energy, FLNC, Fluence]
+    us_ticker: FLNC
+    dart_collect: false
+
+  - canonical: BWX테크놀로지
+    aliases: [BWX Technology, BWXT, BWX Technologies]
+    us_ticker: BWXT
+    dart_collect: false
+
+  - canonical: 지멘스
+    aliases: [Siemens, SIEGY]
+    us_ticker: SIEGY
+    dart_collect: false
+
+# DART 수집 공시 유형 (dart_collect: true 기업 대상)
+# A: 정기공시  B: 주요사항보고  C: 발행공시  D: 지분공시
+# E: 기타공시  F: 외부감사관련  I: 거래소공시  J: 공정위공시
+disclosure_types: [B, I]

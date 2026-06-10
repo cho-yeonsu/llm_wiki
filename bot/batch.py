@@ -10,6 +10,7 @@ from pathlib import Path
 from github_client import GitHubClient
 from claude_client import ClaudeClient
 from validator import validate_ingest_result
+from entity_resolver import load_companies, build_alias_map, resolve_wikilinks, build_entity_context
 
 PROCESSED_MARKER = "**wiki 반영**:"
 
@@ -90,6 +91,14 @@ def main():
     ontology_str = github.get_file("schema/ontology.json")
     ontology = json.loads(ontology_str) if ontology_str else {}
 
+    # codes.yaml 로드 (entity resolver + Claude context)
+    codes_path = Path("schema/codes.yaml")
+    companies = load_companies(str(codes_path)) if codes_path.exists() else []
+    alias_map = build_alias_map(companies)
+    entity_context = build_entity_context(companies)
+    if companies:
+        print(f"엔티티 표준명 {len(companies)}개 로드\n")
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     success = 0
 
@@ -109,14 +118,16 @@ def main():
                 wiki_files=relevant_wiki,
                 schema=schema,
                 ontology=ontology_str,
+                codes_context=entity_context,
             )
 
             errors = validate_ingest_result(result, ontology, {})
             if errors:
                 print(f"  ⚠️ 검증 경고: {errors}")
 
+            # entity resolver: [[alias]] → [[canonical]] 정규화
             wiki_updates = {
-                item["path"]: item["content"]
+                item["path"]: resolve_wikilinks(item["content"], alias_map)
                 for item in result.get("wiki_updates", [])
             }
 
