@@ -68,6 +68,44 @@ async def fetch_telegram_file_content(file_id: str, mime_type: str, file_name: s
         return f"(파일 읽기 실패: {e})"
 
 
+# ─── Wiki 필터링 ──────────────────────────────────────────
+
+def extract_keywords(text: str) -> set[str]:
+    keywords = set()
+    keywords.update(re.findall(r'#([가-힣a-zA-Z0-9_]+)', text))          # 해시태그
+    keywords.update(re.findall(r'\b[A-Z][A-Za-z0-9]{1,}\b', text))       # 영문 대문자 시작 (회사명, 종목명)
+    keywords.update(re.findall(r'[가-힣]{2,}', text))                     # 한글 2글자 이상
+    return keywords
+
+
+def filter_wiki_files(source_text: str, wiki_files: dict[str, str], top_n: int = 15) -> dict[str, str]:
+    if len(wiki_files) <= top_n:
+        return wiki_files
+
+    keywords = extract_keywords(source_text)
+    if not keywords:
+        return dict(list(wiki_files.items())[:top_n])
+
+    scores: dict[str, int] = {}
+    for path, content in wiki_files.items():
+        score = 0
+        filename = path.rsplit('/', 1)[-1].replace('.md', '')
+        for kw in keywords:
+            if not kw:
+                continue
+            if kw in filename or filename in kw:
+                score += 5       # 파일명 일치 (가중치 높음)
+            if kw in path:
+                score += 2       # 경로(디렉토리) 일치
+            if len(kw) >= 2 and kw in content[:300]:
+                score += 1       # 본문 앞부분 일치
+        if score > 0:
+            scores[path] = score
+
+    sorted_paths = sorted(scores, key=lambda p: scores[p], reverse=True)
+    return {p: wiki_files[p] for p in sorted_paths[:top_n]}
+
+
 # ─── 라우팅 ────────────────────────────────────────────────
 
 def resolve_routing(chat_id: int, text: str, ontology: dict) -> dict:
@@ -148,10 +186,14 @@ async def run_ingest(text: str, chat_id: int = 0) -> dict:
     else:
         print("  라우팅: 미결정 (LLM 자율 추론)")
 
+    relevant_wiki = filter_wiki_files(text, wiki_files)
+    if len(wiki_files) != len(relevant_wiki):
+        print(f"  wiki 필터링: {len(wiki_files)}개 → {len(relevant_wiki)}개")
+
     result = claude.ingest(
         source_text=text,
         date_str=date_str,
-        wiki_files=wiki_files,
+        wiki_files=relevant_wiki,
         schema=schema,
         ontology=ontology_str,
         routing=routing,
