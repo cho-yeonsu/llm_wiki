@@ -1,12 +1,16 @@
+import io
 import os
 import re
 import json
 import asyncio
+import zipfile
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 import uvicorn
 import httpx
+import yaml
 from bs4 import BeautifulSoup
 
 from github_client import GitHubClient
@@ -15,6 +19,8 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 github = GitHubClient(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPO"])
+
+CODES_PATH = "schema/codes.yaml"
 
 
 # ─── URL / 파일 fetch ──────────────────────────────────────
@@ -154,6 +160,177 @@ async def save_source(text: str, chat_id: int = 0) -> dict:
     return {"path": path, "title": title}
 
 
+# ─── 텔레그램 메시지 전송 ──────────────────────────────────
+
+async def send_telegram_message(chat_id: int, text: str) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": text},
+            )
+    except Exception as e:
+        print(f"텔레그램 메시지 전송 실패: {e}")
+
+
+# ─── codes.yaml 읽기/쓰기 ──────────────────────────────────
+
+def read_codes() -> dict:
+    raw = github.get_file(CODES_PATH)
+    if not raw:
+        return {"companies": [], "disclosure_types": ["B", "I"]}
+    return yaml.safe_load(raw) or {"companies": [], "disclosure_types": ["B", "I"]}
+
+
+def write_codes(data: dict, message: str) -> None:
+    content = yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    github.commit_files({CODES_PATH: content}, message)
+
+
+# ─── DART 기업 검색 ────────────────────────────────────────
+
+async def dart_search_company(keyword: str) -> list[dict]:
+    """DART 전체 기업 목록에서 키워드로 검색."""
+    api_key = os.environ.get("DART_API_KEY", "")
+    if not api_key:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                "https://opendart.fss.or.kr/api/corpCode.xml",
+                params={"crtfc_key": api_key},
+            )
+            resp.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            xml_data = zf.read("CORPCODE.xml")
+        root = ET.fromstring(xml_data)
+        results = []
+        for item in root.findall("list"):
+            corp_name = (item.findtext("corp_name") or "").strip()
+            if keyword in corp_name:
+                results.append({
+                    "corp_code":  (item.findtext("corp_code")  or "").strip(),
+                    "corp_name":  corp_name,
+                    "stock_code": (item.findtext("stock_code") or "").strip(),
+                })
+        return results
+    except Exception as e:
+        print(f"DART 검색 실패: {e}")
+        return []
+
+
+# ─── 관심종목 명령어 ────────────────────────────────────────
+
+async def handle_watchlist(chat_id: int) -> None:
+    try:
+        companies = read_codes().get("companies", [])
+        if not companies:
+            await send_telegram_message(chat_id, "등록된 관심종목이 없습니다.\n/watch 회사명 으로 추가하세요.")
+            return
+        lines = [f"📋 관심종목 ({len(companies)}개)\n"]
+        for c in companies:
+            dart = "📡" if c.get("dart_collect") else "  "
+            ticker = c.get("kr_code") or c.get("us_ticker") or ""
+            ticker_str = f" ({ticker})" if ticker else ""
+            lines.append(f"{dart} {c['canonical']}{ticker_str}")
+        lines.append("\n📡 = DART 공시 수집 중")
+        await send_telegram_message(chat_id, "\n".join(lines))
+    except Exception as e:
+        await send_telegram_message(chat_id, f"❌ 오류: {e}")
+
+
+async def handle_watch(chat_id: int, args: str) -> None:
+    if not args:
+        await send_telegram_message(chat_id, "사용법: /watch 회사명\n예) /watch 삼성전자")
+        return
+    try:
+        company_name = args.strip()
+        data = read_codes()
+        companies = data.get("companies", [])
+
+        # 이미 등록된 종목인지 확인
+        for c in companies:
+            if c["canonical"] == company_name or company_name in c.get("aliases", []):
+                await send_telegram_message(chat_id, f"이미 등록된 종목입니다: {c['canonical']}")
+                return
+
+        await send_telegram_message(chat_id, f"🔍 '{company_name}' DART 검색 중...")
+        results = await dart_search_company(company_name)
+
+        if len(results) > 5:
+            lines = [f"'{company_name}' 검색 결과가 {len(results)}건입니다. 더 구체적인 이름으로 검색하세요.\n"]
+            for r in results[:10]:
+                stock = f" [{r['stock_code']}]" if r["stock_code"] else ""
+                lines.append(f"  {r['corp_name']}{stock}")
+            if len(results) > 10:
+                lines.append(f"  ... 외 {len(results) - 10}건")
+            await send_telegram_message(chat_id, "\n".join(lines))
+            return
+
+        if len(results) > 1:
+            lines = [f"'{company_name}' 검색 결과 {len(results)}건:\n"]
+            for r in results:
+                stock = f" [{r['stock_code']}]" if r["stock_code"] else ""
+                lines.append(f"  {r['corp_name']}{stock}")
+            lines.append("\n더 구체적인 이름으로 다시 시도하세요.")
+            await send_telegram_message(chat_id, "\n".join(lines))
+            return
+
+        if len(results) == 1:
+            r = results[0]
+            new_entry: dict = {"canonical": r["corp_name"], "aliases": []}
+            if r["stock_code"]:
+                new_entry["kr_code"] = r["stock_code"]
+            new_entry["dart_corp_code"] = r["corp_code"]
+            new_entry["dart_collect"] = True
+            dart_note = "DART 수집 ON"
+        else:
+            new_entry = {"canonical": company_name, "aliases": [], "dart_collect": False}
+            dart_note = "DART 미등록 (국내 상장사 아닌 경우)"
+
+        companies.append(new_entry)
+        data["companies"] = companies
+        write_codes(data, f"watch: {new_entry['canonical']} 추가")
+        await send_telegram_message(chat_id, f"✅ {new_entry['canonical']} 등록 완료\n({dart_note})")
+
+    except Exception as e:
+        await send_telegram_message(chat_id, f"❌ 오류: {e}")
+
+
+async def handle_unwatch(chat_id: int, args: str) -> None:
+    if not args:
+        await send_telegram_message(chat_id, "사용법: /unwatch 회사명\n예) /unwatch 삼성전자")
+        return
+    try:
+        company_name = args.strip()
+        data = read_codes()
+        companies = data.get("companies", [])
+
+        found = None
+        # 정확히 일치하는 canonical 또는 alias 먼저
+        for c in companies:
+            if c["canonical"] == company_name or company_name in c.get("aliases", []):
+                found = c
+                break
+        # 부분 일치 fallback
+        if not found:
+            for c in companies:
+                if company_name in c["canonical"]:
+                    found = c
+                    break
+
+        if not found:
+            await send_telegram_message(chat_id, f"'{company_name}'을 관심종목에서 찾을 수 없습니다.\n/watchlist 로 목록을 확인하세요.")
+            return
+
+        data["companies"] = [c for c in companies if c is not found]
+        write_codes(data, f"unwatch: {found['canonical']} 삭제")
+        await send_telegram_message(chat_id, f"✅ {found['canonical']} 삭제 완료")
+
+    except Exception as e:
+        await send_telegram_message(chat_id, f"❌ 오류: {e}")
+
+
 # ─── FastAPI 앱 ────────────────────────────────────────────
 
 api = FastAPI()
@@ -180,6 +357,24 @@ async def telegram_webhook(request: Request):
         return {"ok": True}
 
     text = message.get("text") or message.get("caption") or ""
+    chat_id = message["chat"]["id"]
+
+    # ── 명령어 처리 (/watch, /unwatch, /watchlist) ──
+    if text.startswith("/"):
+        parts = text.strip().split(None, 1)
+        cmd = parts[0].lower().split("@")[0]  # /cmd@botname 형식 대응
+        cmd_args = parts[1].strip() if len(parts) > 1 else ""
+
+        if cmd == "/watch":
+            asyncio.create_task(handle_watch(chat_id, cmd_args))
+            return {"ok": True}
+        if cmd == "/unwatch":
+            asyncio.create_task(handle_unwatch(chat_id, cmd_args))
+            return {"ok": True}
+        if cmd == "/watchlist":
+            asyncio.create_task(handle_watchlist(chat_id))
+            return {"ok": True}
+
     document = message.get("document")
 
     supported_doc = None
@@ -202,7 +397,6 @@ async def telegram_webhook(request: Request):
     if not text.strip() and not supported_doc:
         return {"ok": True}
 
-    chat_id = message["chat"]["id"]
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     print(f"[{date_str}] 텔레그램 웹훅 (chat_id={chat_id}): {text[:80]}...")
 
