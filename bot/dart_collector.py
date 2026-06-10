@@ -3,8 +3,8 @@
 
 import os
 import io
-import json
 import time
+import yaml
 import zipfile
 import httpx
 from datetime import datetime, timedelta, timezone
@@ -98,14 +98,18 @@ def make_source_content(item: dict, company_name: str, doc_text: str) -> str:
 def main():
     api_key = os.environ["DART_API_KEY"]
 
-    watchlist_path = Path("schema/dart_watchlist.json")
-    if not watchlist_path.exists():
-        print("schema/dart_watchlist.json 없음. 종료.")
+    codes_path = Path("schema/codes.yaml")
+    if not codes_path.exists():
+        print("schema/codes.yaml 없음. 종료.")
         return
 
-    watchlist   = json.loads(watchlist_path.read_text(encoding="utf-8"))
-    companies   = watchlist.get("companies", [])
-    target_types = set(watchlist.get("disclosure_types", ["B", "I"]))
+    data = yaml.safe_load(codes_path.read_text(encoding="utf-8"))
+    companies = [
+        {"name": c["canonical"], "corp_code": c["dart_corp_code"]}
+        for c in data.get("companies", [])
+        if c.get("dart_collect") and c.get("dart_corp_code")
+    ]
+    target_types = set(data.get("disclosure_types", ["B", "I"]))
 
     if not companies:
         print("watchlist에 기업 없음. 종료.")

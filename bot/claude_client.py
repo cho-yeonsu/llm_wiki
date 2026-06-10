@@ -41,6 +41,7 @@ class ClaudeClient:
         schema: str,
         ontology: str = "",
         routing: dict | None = None,
+        codes_context: str = "",
     ) -> dict:
         wiki_context = "\n\n".join(
             f"--- {path} ---\n{content}" for path, content in wiki_files.items()
@@ -78,7 +79,12 @@ wiki 경로: {routing['path']}  ← 신규 페이지는 반드시 이 경로 아
 
 """
 
-        user_message = f"""== ONTOLOGY (분류 체계, 반드시 준수) ==
+        codes_block = f"""== 엔티티 표준명 (반드시 이 이름으로 [[위키링크]] 생성) ==
+{codes_context}
+
+""" if codes_context else ""
+
+        user_message = f"""{codes_block}== ONTOLOGY (분류 체계, 반드시 준수) ==
 {ontology or "(없음)"}
 
 == SCHEMA 규칙 ==
