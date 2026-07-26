@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """정기공시(DART)/SEC 재무제표를 수집해 시계열을 갱신하고, 새 분기가 나오면
-Claude로 재무 분석 리포트를 다시 생성한다.
+Gemini로 재무 분석 리포트를 다시 생성한다.
 
 dart_collector.py와 마찬가지로 로컬 파일시스템에 직접 쓰고, 실제 git commit/push는
 GitHub Actions 워크플로우의 셸 스텝이 담당한다 (여기서는 GitHub API를 쓰지 않는다).
@@ -54,7 +54,7 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def process_dart_company(api_key: str, anthropic_key: str, company: dict, current_year: int) -> bool:
+def process_dart_company(api_key: str, gemini_key: str, company: dict, current_year: int) -> bool:
     name = company["canonical"]
     corp_code = company.get("dart_corp_code")
     if not corp_code:
@@ -74,14 +74,14 @@ def process_dart_company(api_key: str, anthropic_key: str, company: dict, curren
 
     print(f"  {name}: 새 분기 데이터 감지, 리포트 갱신")
     periods = _to_millions(flatten_dart_timeseries(ts))
-    report = generate_report(anthropic_key, name, "KRW", "백만원", periods)
+    report = generate_report(gemini_key, name, "KRW", "백만원", periods)
 
     _write(cache_path, json.dumps(ts, ensure_ascii=False, indent=2))
     _write(company_dir / f"{name}_DART공시_분석.md", report)
     return True
 
 
-def process_sec_company(anthropic_key: str, company: dict) -> bool:
+def process_sec_company(gemini_key: str, company: dict) -> bool:
     name = company["canonical"]
     ticker = company.get("us_ticker")
     if not ticker:
@@ -103,7 +103,7 @@ def process_sec_company(anthropic_key: str, company: dict) -> bool:
 
     print(f"  {name}: 새 분기 데이터 감지, 리포트 갱신")
     periods = _to_millions(flatten_sec_timeseries(ts))
-    report = generate_report(anthropic_key, name, "USD", "백만달러", periods)
+    report = generate_report(gemini_key, name, "USD", "백만달러", periods)
 
     _write(cache_path, json.dumps(ts, ensure_ascii=False, indent=2))
     _write(company_dir / f"{name}_SEC공시_분석.md", report)
@@ -117,7 +117,7 @@ def main():
 
     data = yaml.safe_load(CODES_PATH.read_text(encoding="utf-8"))
     companies = data.get("companies", [])
-    anthropic_key = os.environ["ANTHROPIC_API_KEY"]
+    gemini_key = os.environ["GEMINI_API_KEY"]
     current_year = datetime.now().year
 
     changed = 0
@@ -130,14 +130,14 @@ def main():
         else:
             print(f"DART 재무제표 확인 ({len(dart_targets)}개 기업)")
             for company in dart_targets:
-                if process_dart_company(dart_key, anthropic_key, company, current_year):
+                if process_dart_company(dart_key, gemini_key, company, current_year):
                     changed += 1
 
     sec_targets = [c for c in companies if c.get("sec_collect")]
     if sec_targets:
         print(f"\nSEC 재무제표 확인 ({len(sec_targets)}개 기업)")
         for company in sec_targets:
-            if process_sec_company(anthropic_key, company):
+            if process_sec_company(gemini_key, company):
                 changed += 1
 
     print(f"\n완료: {changed}개 기업 리포트 갱신")

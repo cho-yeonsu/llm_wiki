@@ -1,11 +1,13 @@
-"""분기 재무 시계열을 받아 Claude로 재무 분석 리포트(마크다운)를 생성한다.
+"""분기 재무 시계열을 받아 Gemini로 재무 분석 리포트(마크다운)를 생성한다.
 
 claude_client.py의 위키 통합 프롬프트와는 별도의 전용 시스템 프롬프트를 쓴다 —
 위키 백링크 생성이 아니라 분기 추세·마진·리스크를 다루는 재무분석 리포트가 목적이라
-요구되는 출력 형식과 판단 기준이 완전히 다르다.
+요구되는 출력 형식과 판단 기준이 완전히 다르다. 나머지 봇 파이프라인(claude_client.py,
+main.py, batch.py)은 Anthropic을 그대로 쓰고, 이 재무분석 리포트만 Gemini를 쓴다.
 """
 
-import anthropic
+from google import genai
+from google.genai import types
 
 SYSTEM_PROMPT = """당신은 상장기업 정기공시(재무제표)를 분석하는 애널리스트입니다.
 
@@ -62,17 +64,16 @@ def generate_report(
     unit_label: str,
     periods: list[dict],
 ) -> str:
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4000,
-        system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": build_user_message(company_name, currency_label, unit_label, periods),
-        }],
+    client = genai.Client(api_key=api_key)
+    resp = client.models.generate_content(
+        model="gemini-3.5-flash",
+        contents=build_user_message(company_name, currency_label, unit_label, periods),
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            max_output_tokens=4000,
+        ),
     )
-    return resp.content[0].text
+    return resp.text
 
 
 # ─── 시계열 정규화 ──────────────────────────────────────────
