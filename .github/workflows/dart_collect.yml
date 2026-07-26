@@ -1,4 +1,4 @@
-name: Daily DART Collection
+name: Daily Filings Collection
 
 on:
   schedule:
@@ -26,10 +26,16 @@ jobs:
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
 
+      - name: Collect DART/SEC financial statements
+        run: python bot/financial_collect.py
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
       - name: Commit new sources
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add sources/dart/
-          git diff --staged --quiet || git commit -m "dart: 공시 자동 수집 $(date '+%Y-%m-%d')"
+          git add sources/dart/ "sources/투자/재무제표/"
+          git diff --staged --quiet || git commit -m "dart/sec: 공시·재무제표 자동 수집 $(date '+%Y-%m-%d')"
           git diff --staged --quiet || git push
